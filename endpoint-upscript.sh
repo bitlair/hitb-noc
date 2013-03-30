@@ -22,8 +22,10 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
 
-TUNV4_IPFORMAT="10.239.%d.%d" # first %d is replaced by tunnel number, second by local/remote
-TUNV4_PREFIXLEN=24
+TUNV4_IPFORMAT="10.239.0.%d" # %d is replaced by TUNV4_IPBASE + (tunnel number * 2)
+TUNV4_IPBASE="240"
+TUNV4_PREFIXLEN=31
+
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
@@ -46,21 +48,23 @@ WEIGHT[6]="100"
 WEIGHT[7]="100"
 
 REMOTEV4_PREFIXES="10.10.0.0/16"
-REMOTEV6_PREFIXES="2001:1af8::/32"
+REMOTEV6_PREFIXES="2001:1af8::/48"
 
 
 
 echo "Cleaning up old configuration..."
 for i in $(seq 1 ${LINK_COUNT});do
-        ip tunnel del tunv4-uplink$i
-        ip tunnel del tunv6-uplink$i
+	ip tunnel del tunv4-uplink$i
+	ip tunnel del tunv6-uplink$i
 done &>/dev/null
-pkill -9 bird
+(pkill -9 bird
 iptables -F
 iptables -X
 ip6tables -F
 ip6tables -X
-
+ipset destroy v4_local
+ipset destroy v6_local
+) &>/dev/null
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
 echo 2 > /proc/sys/net/ipv4/conf/all/arp_ignore
@@ -70,19 +74,27 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
 
+echo "Defining the tunnel endpoint addresses..."
+for i in $(seq 1 ${LINK_COUNT}); do
+	TUNV4_LOCAL[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2))))
+	TUNV4_REMOTE[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2) + 1)))
+	TUNV6_LOCAL[$i]=$(printf "${TUNV6_IPFORMAT}" $i 1)
+	TUNV6_REMOTE[$i]=$(printf "${TUNV6_IPFORMAT}" $i 2)
+done
+
 echo "Creating the tunnel interfaces..."
-for i in $(seq 1 ${LINK_COUNT});do
-        ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
-        ip link set tunv4-uplink$i up mtu 1472
-        ip -4 addr add $(printf "${TUNV4_IPFORMAT}" $i 1)/${TUNV4_PREFIXLEN} dev tunv4-uplink$i
-        ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
-        ip link set tunv6-uplink$i up mtu 1472
+for i in $(seq 1 ${LINK_COUNT}); do
+	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
+	ip link set tunv4-uplink$i up mtu 1472
+	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
+	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
+	ip link set tunv6-uplink$i up mtu 1472
 
-        # This hack is necessary because Linux 6in4 ipv6 link-local is /128
-        ip -6 addr flush dev tunv6-uplink$i
-        ip -6 addr add fe80::$i:1/64 dev tunv6-uplink$i
+	# This hack is necessary because Linux 6in4 ipv6 link-local is /128
+	ip -6 addr flush dev tunv6-uplink$i
+	ip -6 addr add fe80::$i:1/64 dev tunv6-uplink$i
 
-        ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 1)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
+	ip -6 addr add ${TUNV6_LOCAL[$i]}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
 echo "Turning on MSS clamping for the tunnel interfaces..."
@@ -93,18 +105,29 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412
 done
 
+echo "Configuring ip sets..."
+ipset create v4_local hash:net family inet
+for i in $(seq 1 ${LINK_COUNT}); do
+	ipset add v4_local ${TUNV4_REMOTE[$i]}/${TUNV4_PREFIXLEN}
+done
+for prefix in ${REMOTEV4_PREFIXES};do
+	ipset add v4_local ${prefix}
+done
+
+ipset create v6_local hash:net family inet6
+for i in $(seq 1 ${LINK_COUNT}); do
+	ipset add v6_local ${TUNV6_REMOTE[$i]}/${TUNV6_PREFIXLEN}
+done
+for prefix in ${REMOTEV6_PREFIXES};do
+	ipset add v6_local ${prefix}
+done
+
 echo "Configuring tunnel interface inbound firewall..."
 for i in $(seq 1 ${LINK_COUNT}); do
-	iptables -A FORWARD -i tunv4-uplink$i -s $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} -j ACCEPT
-	for prefix in ${REMOTEV4_PREFIXES};do
-		iptables -A FORWARD -i tunv4-uplink$i -s ${prefix} -j ACCEPT
-	done
+	iptables -A FORWARD -i tunv4-uplink$i -m set --match-set v4_local src -j ACCEPT
 	iptables -A FORWARD -i tunv4-uplink$i -j DROP
 
-	ip6tables -A FORWARD -i tunv6-uplink$i -s $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} -j ACCEPT
-	for prefix in ${REMOTEV6_PREFIXES};do
-		ip6tables -A FORWARD -i tunv6-uplink$i -s ${prefix} -j ACCEPT
-	done
+	ip6tables -A FORWARD -i tunv6-uplink$i -m set --match-set v6_local src -j ACCEPT
 	ip6tables -A FORWARD -i tunv6-uplink$i -j DROP
 done
 
@@ -159,7 +182,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
 	echo "      neighbors {"
-	printf "        ${TUNV4_IPFORMAT} eligible;\n" $i 2
+	echo "        ${TUNV4_REMOTE[$i]} eligible;"
 	echo "      };"
 	echo "      strict nonbroadcast no;"
 	echo "    };"
@@ -221,7 +244,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
 	echo "      neighbors {"
-	printf "        ${TUNV6_IPFORMAT} eligible;\n" $i 2
+	echo "        ${TUNV6_REMOTE[$i]} eligible;"
 	echo "      };"
 	echo "      strict nonbroadcast no;"
 	echo "    };"
