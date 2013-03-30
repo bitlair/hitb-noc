@@ -153,7 +153,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 
 	# This hack is necessary because Linux 6in4 link-local is /128
 	ip -6 addr flush dev tunv6-uplink$i
-	#ip -6 addr add fe80::$i:2/64 dev tunv6-uplink$i
+	ip -6 addr add fe80::$i:2/64 dev tunv6-uplink$i
 	
 	ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
