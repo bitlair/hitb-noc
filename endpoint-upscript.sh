@@ -24,7 +24,7 @@
 
 TUNV4_IPFORMAT="10.239.%d.%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV4_PREFIXLEN=24
-TUNV6_IPFORMAT="fe80:%d::%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
 LINK_COUNT=7
