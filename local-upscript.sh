@@ -27,7 +27,7 @@
 TUN_REMOTE="192.168.1.1"
 
 TUNV4_IPFORMAT="10.239.0.%d" # first %d is replaced by tunnel number, second by local/remote
-TUNV4_IPBASE="240"
+TUNV4_IPBASE="242"
 TUNV4_PREFIXLEN=24
 
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
@@ -42,7 +42,9 @@ BOND_INTERFACE="bond0"
 BOND_SLAVES="eth0 eth1"
 BOND_NATIVE_V4_ADDRESS="192.168.239.2/24"
 BOND_NATIVE_V6_ADDRESS=""
-VLANBASE="20"
+VLAN_BASE="20"
+
+TABLE_BASE="10"
 
 ADDRESS[0]="212.64.109.221"
 PREFIX[0]="24"
@@ -86,8 +88,8 @@ for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip link set br-uplink$i down && 
 		brctl delbr br-uplink$i
 	vconfig rem vlan-uplink$i
-	ip route flush table $i 
-	ip rule del from ${ADDRESS[$i]} table $i
+	ip route flush table $((TABLE_BASE+$i)) 
+	ip rule del from ${ADDRESS[$i]} table $((TABLE_BASE+$i))
 	ip tunnel del tunv4-uplink$i
 	ip tunnel del tunv6-uplink$i
 done &>/dev/null
@@ -124,8 +126,8 @@ echo "Creating the VLAN interfaces, bridges and tables..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
 
 	# Create and name the VLAN interface
-	vconfig add ${BOND_INTERFACE} $((${VLANBASE}+$i))
-	ip link set ${BOND_INTERFACE}.$((${VLANBASE}+$i)) up name vlan-uplink$i
+	vconfig add ${BOND_INTERFACE} $((${VLAN_BASE}+$i))
+	ip link set ${BOND_INTERFACE}.$((${VLAN_BASE}+$i)) up name vlan-uplink$i
 
 	# Create and link the corresponding bridge
 	brctl addbr br-uplink$i
@@ -136,11 +138,11 @@ for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip -4 addr add ${ADDRESS[$i]}/${PREFIX[$i]} scope link dev br-uplink$i
 
 	# Make sure traffic is routed to the proper table
-	ip -4 rule add from ${ADDRESS[$i]} table $i 
+	ip -4 rule add from ${ADDRESS[$i]} table $((TABLE_BASE+$i)) 
 
 	# Populate the uplink routing table
-	ip -4 route add ${NETWORK[$i]}/${PREFIX[$i]} dev br-uplink$i table $i
-	ip -4 route add 0.0.0.0/0 via ${GATEWAY[$i]} dev br-uplink$i table $i
+	ip -4 route add ${NETWORK[$i]}/${PREFIX[$i]} dev br-uplink$i table $((TABLE_BASE+$i))
+	ip -4 route add 0.0.0.0/0 via ${GATEWAY[$i]} dev br-uplink$i table $((TABLE_BASE+$i))
 done
 
 echo "Spoofing the DHCP handshakes..."

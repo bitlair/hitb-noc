@@ -23,7 +23,7 @@
 #
 
 TUNV4_IPFORMAT="10.239.0.%d" # %d is replaced by TUNV4_IPBASE + (tunnel number * 2)
-TUNV4_IPBASE="240"
+TUNV4_IPBASE="242"
 TUNV4_PREFIXLEN=31
 
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
