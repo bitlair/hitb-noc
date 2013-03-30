@@ -57,10 +57,16 @@ for i in $(seq 1 ${LINK_COUNT});do
 done &>/dev/null
 ip route del default &>/dev/null
 pkill -9 bird
+iptables -F
+iptables -X
+ip6tables -F
+ip6tables -X
 
-echo "Making sure ARP replies are very strict about source interface."
+echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
 echo 2 > /proc/sys/net/ipv4/conf/all/arp_ignore
+
+echo "Enabling packet forwarding..."
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
@@ -80,10 +86,25 @@ for i in $(seq 1 ${LINK_COUNT});do
         ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 1)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
-echo "Turning on MSS clamping for the tunnel interfaces"
+echo "Turning on MSS clamping for the tunnel interfaces..."
 for i in $(seq 1 ${LINK_COUNT}); do
 	iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432 # 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
 	ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
+done
+
+echo "Configuring tunnel interface inbound firewall..."
+for i in $(seq 1 ${LINK_COUNT}); do
+	iptables -A FORWARD -i tunv4-uplink$i $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} -j ACCEPT
+	for prefix in ${REMOTEV4_PREFIXES};do
+		iptables -A FORWARD -i tunv4-uplink$i -s ${prefix} -j ACCEPT
+	done
+	iptables -A FORWARD -i tunv4-uplink$i -j DROP
+
+	ip6tables -A FORWARD -i tunv6-uplink$i -s $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} -j ACCEPT
+	for prefix in ${REMOTEV6_PREFIXES};do
+		ip6tables -A FORWARD -i tunv6-uplink$i -s ${prefix} -j ACCEPT
+	done
+	ip6tables -A FORWARD -i tunv6-uplink$i -j DROP
 done
 
 echo "Configuring and starting OSPFv2 daemon..."

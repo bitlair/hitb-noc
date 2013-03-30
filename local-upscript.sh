@@ -86,18 +86,24 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip rule del from ${ADDRESS[$i]} table $i
 	ip tunnel del tunv4-uplink$i
 	ip tunnel del tunv6-uplink$i
-	iptables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432 # 1492 - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
-	ip6tables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
 done &>/dev/null
 ip route del default &>/dev/null
 ip link set ${BOND_INTERFACE} down
 pkill -9 bird
 pkill -9 dhcpcd
+iptables -F
+iptables -X
+ip6tables -F
+ip6tables -X
 
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_announce
 echo 2 > /proc/sys/net/ipv4/conf/all/arp_ignore
+
+echo "Enabling packet forwarding..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
 echo "Configuring the bonding interface..."
 rmmod bonding &>/dev/null
@@ -164,7 +170,6 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
 done
 
-# FIXME Static local routes 10.10.0.0/16
 echo "Configuring and starting OSPFv2 daemon..."
 cat > /tmp/bird.conf << EOF
 # Configure logging
