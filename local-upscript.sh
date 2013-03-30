@@ -163,10 +163,12 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
-echo "Turning on MSS clamping for the tunnel interfaces"
+echo "Turning on MSS clamping for the tunnel interfaces..."
 for i in $(seq 1 ${LINK_COUNT}); do
-	iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432 # 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
-	ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
+	# MSS 1432: 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
+	iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432
+ 	# MSS 1412: 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
+	ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412
 done
 
 echo "Configuring and starting OSPFv2 daemon..."
