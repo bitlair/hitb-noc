@@ -269,8 +269,8 @@ protocol static {
 EOF
 for prefix in ${REMOTEV6_PREFIXES};do
 	echo "route ${prefix} blackhole; # Not really, but we announce it!"
-done >> /tmp/bird.conf
-cat >> /tmp/bird.conf << EOF
+done >> /tmp/bird6.conf
+cat >> /tmp/bird6.conf << EOF
 }
 
 protocol ospf MyOSPF {
