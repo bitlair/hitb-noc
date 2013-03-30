@@ -93,7 +93,7 @@ done
 
 echo "Configuring tunnel interface inbound firewall..."
 for i in $(seq 1 ${LINK_COUNT}); do
-	iptables -A FORWARD -i tunv4-uplink$i $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} -j ACCEPT
+	iptables -A FORWARD -i tunv4-uplink$i -s $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} -j ACCEPT
 	for prefix in ${REMOTEV4_PREFIXES};do
 		iptables -A FORWARD -i tunv4-uplink$i -s ${prefix} -j ACCEPT
 	done
