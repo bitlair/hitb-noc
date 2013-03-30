@@ -55,7 +55,6 @@ for i in $(seq 1 ${LINK_COUNT});do
         ip tunnel del tunv4-uplink$i
         ip tunnel del tunv6-uplink$i
 done &>/dev/null
-ip route del default &>/dev/null
 pkill -9 bird
 iptables -F
 iptables -X
