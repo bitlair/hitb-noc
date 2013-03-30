@@ -25,7 +25,9 @@
 
 
 TUN_REMOTE="192.168.1.1"
-TUNV4_IPFORMAT="10.239.%d.%d" # first %d is replaced by tunnel number, second by local/remote
+
+TUNV4_IPFORMAT="10.239.0.%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV4_IPBASE="240"
 TUNV4_PREFIXLEN=24
 
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
@@ -41,45 +43,46 @@ BOND_SLAVES="eth0 eth1"
 BOND_NATIVE_V4_ADDRESS="192.168.239.2/24"
 BOND_NATIVE_V6_ADDRESS=""
 VLANBASE="20"
-ADDRESS[1]="212.64.109.221"
+
+ADDRESS[0]="212.64.109.221"
+PREFIX[0]="24"
+NETWORK[0]="212.64.109.0"
+GATEWAY[0]="212.64.109.1"
+WEIGHT[0]="100"
+ADDRESS[1]="212.64.109.241"
 PREFIX[1]="24"
 NETWORK[1]="212.64.109.0"
 GATEWAY[1]="212.64.109.1"
 WEIGHT[1]="100"
-ADDRESS[2]="212.64.109.241"
+ADDRESS[2]="212.64.110.65"
 PREFIX[2]="24"
-NETWORK[2]="212.64.109.0"
-GATEWAY[2]="212.64.109.1"
+NETWORK[2]="212.64.110.0"
+GATEWAY[2]="212.64.110.1"
 WEIGHT[2]="100"
-ADDRESS[3]="212.64.110.65"
+ADDRESS[3]="212.64.110.124"
 PREFIX[3]="24"
 NETWORK[3]="212.64.110.0"
 GATEWAY[3]="212.64.110.1"
 WEIGHT[3]="100"
-ADDRESS[4]="212.64.110.124"
+ADDRESS[4]="212.64.110.150"
 PREFIX[4]="24"
 NETWORK[4]="212.64.110.0"
 GATEWAY[4]="212.64.110.1"
 WEIGHT[4]="100"
-ADDRESS[5]="212.64.110.150"
+ADDRESS[5]="212.64.110.173"
 PREFIX[5]="24"
 NETWORK[5]="212.64.110.0"
 GATEWAY[5]="212.64.110.1"
 WEIGHT[5]="100"
-ADDRESS[6]="212.64.110.173"
+ADDRESS[6]="212.64.110.183"
 PREFIX[6]="24"
 NETWORK[6]="212.64.110.0"
 GATEWAY[6]="212.64.110.1"
 WEIGHT[6]="100"
-ADDRESS[7]="212.64.110.183"
-PREFIX[7]="24"
-NETWORK[7]="212.64.110.0"
-GATEWAY[7]="212.64.110.1"
-WEIGHT[7]="100"
 
 
 echo "Cleaning up old configuration..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip link set br-uplink$i down && 
 		brctl delbr br-uplink$i
 	vconfig rem vlan-uplink$i
@@ -118,7 +121,7 @@ if [ ! -z "${BOND_NATIVE_V6_ADDRESS}" ]; then
 fi
 
 echo "Creating the VLAN interfaces, bridges and tables..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 
 	# Create and name the VLAN interface
 	vconfig add ${BOND_INTERFACE} $((${VLANBASE}+$i))
@@ -141,12 +144,12 @@ for i in $(seq 1 ${LINK_COUNT}); do
 done
 
 echo "Spoofing the DHCP handshakes..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	dhcpcd -TRYN br-uplink$i &>/dev/null &
 done
 
 echo "Defining the tunnel endpoint addresses..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	TUNV4_LOCAL[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2) + 1)))
 	TUNV4_REMOTE[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2))))
 	TUNV6_LOCAL[$i]=$(printf "${TUNV6_IPFORMAT}" $i 2)
@@ -157,7 +160,7 @@ echo "Creating the tunnel interfaces..."
 # Dummy route to make sure the packet reaches the IP rules
 ip -4 route add ${TUN_REMOTE} via ${GATEWAY[1]} dev br-uplink1 table main
 
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE} local ${ADDRESS[$i]}
 	ip link set tunv4-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
 	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
@@ -172,7 +175,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 done
 
 echo "Turning on MSS clamping for the tunnel interfaces..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	# MSS 1432: 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
 	iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432
  	# MSS 1412: 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
@@ -229,7 +232,7 @@ protocol ospf MyOSPF {
   ecmp yes;
   area 0 {
 EOF
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	echo "    interface \"tunv4-uplink$i\" {"
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
@@ -295,7 +298,7 @@ protocol ospf MyOSPF {
   ecmp yes;
   area 0 {
 EOF
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	echo "    interface \"tunv6-uplink$i\" {"
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
