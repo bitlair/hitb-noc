@@ -170,7 +170,11 @@ log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
 router id 2;
 
 filter hitb_local_routes {
-  if net ~ 10.10.0.0/16 then accept;
+EOF
+for prefix in ${REMOTEV4_PREFIXES};do
+	echo "  if net ~ ${prefix} then accept;"
+done >> /tmp/bird.conf
+cat >> /tmp/bird.conf << EOF
   else reject;
 }
 
@@ -191,8 +195,12 @@ protocol device {
 }
 
 protocol static {
- import all;
-  route 10.10.0.0/16 blackhole; # Not really, but we announce it!
+  import all;
+EOF
+for prefix in ${REMOTEV4_PREFIXES};do
+	echo "route ${prefix} blackhole; # Not really, but we announce it!"
+done >> /tmp/bird.conf
+cat >> /tmp/bird.conf << EOF
 }
 
 protocol ospf MyOSPF {
@@ -228,7 +236,11 @@ log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
 router id 2;
 
 filter hitb_local_routes {
-  if net ~ 2aa3::/16 then accept;
+EOF
+for prefix in ${REMOTEV6_PREFIXES};do
+	echo "  if net ~ ${prefix} then accept;"
+done >> /tmp/bird6.conf
+cat >> /tmp/bird6.conf << EOF
   else reject;
 }
 
@@ -250,7 +262,11 @@ protocol device {
 
 protocol static {
   import all;
-  route 2aa3::/16 blackhole; # Not really, but we announce it!
+EOF
+for prefix in ${REMOTEV6_PREFIXES};do
+	echo "route ${prefix} blackhole; # Not really, but we announce it!"
+done >> /tmp/bird.conf
+cat >> /tmp/bird.conf << EOF
 }
 
 protocol ospf MyOSPF {

@@ -54,12 +54,6 @@ echo "Cleaning up old configuration..."
 for i in $(seq 1 ${LINK_COUNT});do
         ip tunnel del tunv4-uplink$i
         ip tunnel del tunv6-uplink$i
-	for PREFIX in REMOTEV4_PREFIXES;do
-		ip -4 route del ${PREFIX} table main
-	done
-	for PREFIX in REMOTEV6_PREFIXES;do
-		ip -6 route del ${PREFIX} table main
-	done
 done &>/dev/null
 ip route del default &>/dev/null
 pkill -9 bird
@@ -101,7 +95,11 @@ log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
 router id 1;
 
 filter hitb_local_routes {
-  if net ~ 10.10.0.0/16 then accept;
+EOF
+for prefix in ${REMOTEV4_PREFIXES};do
+	echo "  if net ~ ${prefix} then accept;"
+done >> /tmp/bird.conf
+cat >> /tmp/bird.conf << EOF
   else reject;
 }
 
@@ -159,7 +157,11 @@ log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
 router id 1;
 
 filter hitb_local_routes {
-  if net ~ 2aa3::/16 then accept;
+EOF
+for prefix in ${REMOTEV6_PREFIXES};do
+	echo "  if net ~ ${prefix} then accept;"
+done >> /tmp/bird6.conf
+cat >> /tmp/bird6.conf << EOF
   else reject;
 }
 
