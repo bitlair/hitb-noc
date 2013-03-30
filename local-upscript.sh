@@ -168,7 +168,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip -6 addr flush dev tunv6-uplink$i
 	ip -6 addr add fe80::$i:2/64 dev tunv6-uplink$i
 	
-	ip -6 addr add ${TUNV6_LOCAL}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
+	ip -6 addr add ${TUNV6_LOCAL[$i]}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
 echo "Turning on MSS clamping for the tunnel interfaces..."
