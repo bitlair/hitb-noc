@@ -30,6 +30,10 @@ TUNV4_PREFIXLEN=24
 TUNV6_IPFORMAT="fe80:%d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
+
+REMOTEV4_PREFIXES="10.10.0.0/16"
+REMOTEV6_PREFIXES="2001:1af8::/32"
+
 LINK_COUNT="7"
 BOND_INTERFACE="bond0"
 BOND_SLAVES="eth0 eth1"
