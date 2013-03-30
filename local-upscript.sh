@@ -25,8 +25,11 @@
 
 
 TUN_REMOTE="192.168.1.1"
-TUNV4_IPFORMAT="10.239.%d.%d" # first %d is replaced by tunnel number, second by local/remote
+
+TUNV4_IPFORMAT="10.239.0.%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV4_IPBASE="242"
 TUNV4_PREFIXLEN=24
+
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
@@ -39,65 +42,73 @@ BOND_INTERFACE="bond0"
 BOND_SLAVES="eth0 eth1"
 BOND_NATIVE_V4_ADDRESS="192.168.239.2/24"
 BOND_NATIVE_V6_ADDRESS=""
-VLANBASE="20"
-ADDRESS[1]="212.64.109.221"
+VLAN_BASE="20"
+
+TABLE_BASE="10"
+
+ADDRESS[0]="212.64.109.221"
+PREFIX[0]="24"
+NETWORK[0]="212.64.109.0"
+GATEWAY[0]="212.64.109.1"
+WEIGHT[0]="100"
+ADDRESS[1]="212.64.109.241"
 PREFIX[1]="24"
 NETWORK[1]="212.64.109.0"
 GATEWAY[1]="212.64.109.1"
 WEIGHT[1]="100"
-ADDRESS[2]="212.64.109.241"
+ADDRESS[2]="212.64.110.65"
 PREFIX[2]="24"
-NETWORK[2]="212.64.109.0"
-GATEWAY[2]="212.64.109.1"
+NETWORK[2]="212.64.110.0"
+GATEWAY[2]="212.64.110.1"
 WEIGHT[2]="100"
-ADDRESS[3]="212.64.110.65"
+ADDRESS[3]="212.64.110.124"
 PREFIX[3]="24"
 NETWORK[3]="212.64.110.0"
 GATEWAY[3]="212.64.110.1"
 WEIGHT[3]="100"
-ADDRESS[4]="212.64.110.124"
+ADDRESS[4]="212.64.110.150"
 PREFIX[4]="24"
 NETWORK[4]="212.64.110.0"
 GATEWAY[4]="212.64.110.1"
 WEIGHT[4]="100"
-ADDRESS[5]="212.64.110.150"
+ADDRESS[5]="212.64.110.173"
 PREFIX[5]="24"
 NETWORK[5]="212.64.110.0"
 GATEWAY[5]="212.64.110.1"
 WEIGHT[5]="100"
-ADDRESS[6]="212.64.110.173"
+ADDRESS[6]="212.64.110.183"
 PREFIX[6]="24"
 NETWORK[6]="212.64.110.0"
 GATEWAY[6]="212.64.110.1"
 WEIGHT[6]="100"
-ADDRESS[7]="212.64.110.183"
-PREFIX[7]="24"
-NETWORK[7]="212.64.110.0"
-GATEWAY[7]="212.64.110.1"
-WEIGHT[7]="100"
 
 
 echo "Cleaning up old configuration..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip link set br-uplink$i down && 
 		brctl delbr br-uplink$i
 	vconfig rem vlan-uplink$i
-	ip route flush table $i 
-	ip rule del from ${ADDRESS[$i]} table $i
+	ip route flush table $((TABLE_BASE+$i)) 
+	ip rule del from ${ADDRESS[$i]} table $((TABLE_BASE+$i))
 	ip tunnel del tunv4-uplink$i
 	ip tunnel del tunv6-uplink$i
-	iptables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432 # 1492 - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
-	ip6tables -D FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
 done &>/dev/null
-ip route del default &>/dev/null
 ip link set ${BOND_INTERFACE} down
 pkill -9 bird
 pkill -9 dhcpcd
+iptables -F
+iptables -X
+ip6tables -F
+ip6tables -X
 
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_announce
 echo 2 > /proc/sys/net/ipv4/conf/all/arp_ignore
+
+echo "Enabling packet forwarding..."
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
 echo "Configuring the bonding interface..."
 rmmod bonding &>/dev/null
@@ -112,11 +123,11 @@ if [ ! -z "${BOND_NATIVE_V6_ADDRESS}" ]; then
 fi
 
 echo "Creating the VLAN interfaces, bridges and tables..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 
 	# Create and name the VLAN interface
-	vconfig add ${BOND_INTERFACE} $((${VLANBASE}+$i))
-	ip link set ${BOND_INTERFACE}.$((${VLANBASE}+$i)) up name vlan-uplink$i
+	vconfig add ${BOND_INTERFACE} $((${VLAN_BASE}+$i))
+	ip link set ${BOND_INTERFACE}.$((${VLAN_BASE}+$i)) up name vlan-uplink$i
 
 	# Create and link the corresponding bridge
 	brctl addbr br-uplink$i
@@ -127,27 +138,34 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip -4 addr add ${ADDRESS[$i]}/${PREFIX[$i]} scope link dev br-uplink$i
 
 	# Make sure traffic is routed to the proper table
-	ip -4 rule add from ${ADDRESS[$i]} table $i 
+	ip -4 rule add from ${ADDRESS[$i]} table $((TABLE_BASE+$i)) 
 
 	# Populate the uplink routing table
-	ip -4 route add ${NETWORK[$i]}/${PREFIX[$i]} dev br-uplink$i table $i
-	ip -4 route add 0.0.0.0/0 via ${GATEWAY[$i]} dev br-uplink$i table $i
+	ip -4 route add ${NETWORK[$i]}/${PREFIX[$i]} dev br-uplink$i table $((TABLE_BASE+$i))
+	ip -4 route add 0.0.0.0/0 via ${GATEWAY[$i]} dev br-uplink$i table $((TABLE_BASE+$i))
 done
 
 echo "Spoofing the DHCP handshakes..."
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	dhcpcd -TRYN br-uplink$i &>/dev/null &
 done
 
-echo "Creating the tunnel interfaces..."
+echo "Defining the tunnel endpoint addresses..."
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
+	TUNV4_LOCAL[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2) + 1)))
+	TUNV4_REMOTE[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2))))
+	TUNV6_LOCAL[$i]=$(printf "${TUNV6_IPFORMAT}" $i 2)
+	TUNV6_REMOTE[$i]=$(printf "${TUNV6_IPFORMAT}" $i 1)
+done
 
+echo "Creating the tunnel interfaces..."
 # Dummy route to make sure the packet reaches the IP rules
 ip -4 route add ${TUN_REMOTE} via ${GATEWAY[1]} dev br-uplink1 table main
 
-for i in $(seq 1 ${LINK_COUNT}); do
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE} local ${ADDRESS[$i]}
 	ip link set tunv4-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
-	ip -4 addr add $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} dev tunv4-uplink$i
+	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
 	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE} local ${ADDRESS[$i]}
 	ip link set tunv6-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
 
@@ -155,16 +173,17 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip -6 addr flush dev tunv6-uplink$i
 	ip -6 addr add fe80::$i:2/64 dev tunv6-uplink$i
 	
-	ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
+	ip -6 addr add ${TUNV6_LOCAL[$i]}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
-echo "Turning on MSS clamping for the tunnel interfaces"
-for i in $(seq 1 ${LINK_COUNT}); do
-	iptables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432 # 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
-	ip6tables -A FORWARD -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412 # 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
+echo "Turning on MSS clamping for the tunnel interfaces..."
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
+	# MSS 1432: 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
+	iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432
+ 	# MSS 1412: 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
+	ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412
 done
 
-# FIXME Static local routes 10.10.0.0/16
 echo "Configuring and starting OSPFv2 daemon..."
 cat > /tmp/bird.conf << EOF
 # Configure logging
@@ -215,15 +234,15 @@ protocol ospf MyOSPF {
   ecmp yes;
   area 0 {
 EOF
-for i in $(seq 1 ${LINK_COUNT}); do
-        echo "    interface \"tunv4-uplink$i\" {"
-        echo "      ecmp weight ${WEIGHT[$i]};"
-        echo "      type nonbroadcast;"
-        echo "      neighbors {"
-        printf "        ${TUNV4_IPFORMAT} eligible;\n" $i 1
-        echo "      };"
-        echo "      strict nonbroadcast no;"
-        echo "    };"
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
+	echo "    interface \"tunv4-uplink$i\" {"
+	echo "      ecmp weight ${WEIGHT[$i]};"
+	echo "      type nonbroadcast;"
+	echo "      neighbors {"
+	echo "        ${TUNV4_REMOTE[$i]} eligible;"
+	echo "      };"
+	echo "      strict nonbroadcast no;"
+	echo "    };"
 done >> /tmp/bird.conf
 cat >> /tmp/bird.conf << EOF
   };
@@ -281,15 +300,15 @@ protocol ospf MyOSPF {
   ecmp yes;
   area 0 {
 EOF
-for i in $(seq 1 ${LINK_COUNT}); do
-        echo "    interface \"tunv6-uplink$i\" {"
-        echo "      ecmp weight ${WEIGHT[$i]};"
-        echo "      type nonbroadcast;"
-        echo "      neighbors {"
-        printf "        ${TUNV6_IPFORMAT} eligible;\n" $i 1
-        echo "      };"
-        echo "      strict nonbroadcast no;"
-        echo "    };"
+for i in $(seq 0 $((${LINK_COUNT}-1))); do
+	echo "    interface \"tunv6-uplink$i\" {"
+	echo "      ecmp weight ${WEIGHT[$i]};"
+	echo "      type nonbroadcast;"
+	echo "      neighbors {"
+	echo "        ${TUNV6_REMOTE[$i]} eligible;"
+	echo "      };"
+	echo "      strict nonbroadcast no;"
+	echo "    };"
 done >> /tmp/bird6.conf
 cat >> /tmp/bird6.conf << EOF
   };
