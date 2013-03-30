@@ -27,6 +27,7 @@
 TUN_REMOTE="192.168.1.1"
 TUNV4_IPFORMAT="10.239.%d.%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV4_PREFIXLEN=24
+
 TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
@@ -144,15 +145,22 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	dhcpcd -TRYN br-uplink$i &>/dev/null &
 done
 
-echo "Creating the tunnel interfaces..."
+echo "Defining the tunnel endpoint addresses..."
+for i in $(seq 1 ${LINK_COUNT}); do
+	TUNV4_LOCAL[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2) + 1)))
+	TUNV4_REMOTE[$i]=$(printf "${TUNV4_IPFORMAT}" $((${TUNV4_IPBASE} + ($i * 2))))
+	TUNV6_LOCAL[$i]=$(printf "${TUNV6_IPFORMAT}" $i 2)
+	TUNV6_REMOTE[$i]=$(printf "${TUNV6_IPFORMAT}" $i 1)
+done
 
+echo "Creating the tunnel interfaces..."
 # Dummy route to make sure the packet reaches the IP rules
 ip -4 route add ${TUN_REMOTE} via ${GATEWAY[1]} dev br-uplink1 table main
 
 for i in $(seq 1 ${LINK_COUNT}); do
 	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE} local ${ADDRESS[$i]}
 	ip link set tunv4-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
-	ip -4 addr add $(printf "${TUNV4_IPFORMAT}" $i 2)/${TUNV4_PREFIXLEN} dev tunv4-uplink$i
+	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
 	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE} local ${ADDRESS[$i]}
 	ip link set tunv6-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
 
@@ -160,7 +168,7 @@ for i in $(seq 1 ${LINK_COUNT}); do
 	ip -6 addr flush dev tunv6-uplink$i
 	ip -6 addr add fe80::$i:2/64 dev tunv6-uplink$i
 	
-	ip -6 addr add $(printf "${TUNV6_IPFORMAT}" $i 2)/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
+	ip -6 addr add ${TUNV6_LOCAL}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
 done
 
 echo "Turning on MSS clamping for the tunnel interfaces..."
@@ -222,14 +230,14 @@ protocol ospf MyOSPF {
   area 0 {
 EOF
 for i in $(seq 1 ${LINK_COUNT}); do
-        echo "    interface \"tunv4-uplink$i\" {"
-        echo "      ecmp weight ${WEIGHT[$i]};"
-        echo "      type nonbroadcast;"
-        echo "      neighbors {"
-        printf "        ${TUNV4_IPFORMAT} eligible;\n" $i 1
-        echo "      };"
-        echo "      strict nonbroadcast no;"
-        echo "    };"
+	echo "    interface \"tunv4-uplink$i\" {"
+	echo "      ecmp weight ${WEIGHT[$i]};"
+	echo "      type nonbroadcast;"
+	echo "      neighbors {"
+	echo "        ${TUNV4_REMOTE[$i]} eligible;"
+	echo "      };"
+	echo "      strict nonbroadcast no;"
+	echo "    };"
 done >> /tmp/bird.conf
 cat >> /tmp/bird.conf << EOF
   };
@@ -288,14 +296,14 @@ protocol ospf MyOSPF {
   area 0 {
 EOF
 for i in $(seq 1 ${LINK_COUNT}); do
-        echo "    interface \"tunv6-uplink$i\" {"
-        echo "      ecmp weight ${WEIGHT[$i]};"
-        echo "      type nonbroadcast;"
-        echo "      neighbors {"
-        printf "        ${TUNV6_IPFORMAT} eligible;\n" $i 1
-        echo "      };"
-        echo "      strict nonbroadcast no;"
-        echo "    };"
+	echo "    interface \"tunv6-uplink$i\" {"
+	echo "      ecmp weight ${WEIGHT[$i]};"
+	echo "      type nonbroadcast;"
+	echo "      neighbors {"
+	echo "        ${TUNV6_REMOTE[$i]} eligible;"
+	echo "      };"
+	echo "      strict nonbroadcast no;"
+	echo "    };"
 done >> /tmp/bird6.conf
 cat >> /tmp/bird6.conf << EOF
   };
