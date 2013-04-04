@@ -24,23 +24,23 @@
 
 
 
-TUN_REMOTE="192.168.1.1"
+TUN_REMOTE="194.171.96.105"
 
-TUNV4_IPFORMAT="10.239.0.%d" # first %d is replaced by tunnel number, second by local/remote
-TUNV4_IPBASE="242"
+TUNV4_IPFORMAT="145.220.15.%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV4_IPBASE="240"
 TUNV4_PREFIXLEN=24
 
-TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV6_IPFORMAT="2001:470:7945:ff%02d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
 
 
-REMOTEV4_PREFIXES="10.10.0.0/16"
-REMOTEV6_PREFIXES="2001:1af8::/32"
+REMOTEV4_PREFIXES="145.220.8.0/21"
+REMOTEV6_PREFIXES="2001:470:7945::/48"
 
 LINK_COUNT="7"
 BOND_INTERFACE="bond0"
 BOND_SLAVES="eth0 eth1"
-BOND_NATIVE_V4_ADDRESS="192.168.239.2/24"
+BOND_NATIVE_V4_ADDRESS=""
 BOND_NATIVE_V6_ADDRESS=""
 VLAN_BASE="20"
 
