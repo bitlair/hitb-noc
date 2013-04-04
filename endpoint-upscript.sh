@@ -22,16 +22,25 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
 
-TUNV4_IPFORMAT="10.239.0.%d" # %d is replaced by TUNV4_IPBASE + (tunnel number * 2)
-TUNV4_IPBASE="242"
+TUNV4_IPFORMAT="145.220.15.%d" # %d is replaced by TUNV4_IPBASE + (tunnel number * 2)
+TUNV4_IPBASE="240"
 TUNV4_PREFIXLEN=31
 
-TUNV6_IPFORMAT="2001:610:1337:ff%d::%d" # first %d is replaced by tunnel number, second by local/remote
+TUNV6_IPFORMAT="2001:470:7945:ff%02d::%d" # first %d is replaced by tunnel number, second by local/remote
 TUNV6_PREFIXLEN=64
+
+UPLINK_INTERFACE="eth1"
+UPLINK_ADDRESS="145.220.15.6"
+UPLINK_PREFIXLEN="30"
+UPLINK_GATEWAY="145.220.15.5"
+
+DNLINK_INTERFACE="eth0"
+DNLINK_ADDRESS="194.171.96.105"
+DNLINK_PREFIXLEN="27"
+DNLINK_GATEWAY="194.171.96.126"
 
 LINK_COUNT=7
 
-TUN_LOCAL="192.168.1.1"
 TUN_REMOTE[0]="212.64.109.221"
 TUN_REMOTE[1]="212.64.109.241"
 TUN_REMOTE[2]="212.64.110.65"
@@ -47,15 +56,14 @@ WEIGHT[4]="100"
 WEIGHT[5]="100"
 WEIGHT[6]="100"
 
-REMOTEV4_PREFIXES="10.10.0.0/16"
-REMOTEV6_PREFIXES="2001:1af8::/48"
-
-
+REMOTEV4_PREFIXES="145.220.8.0/21"
+REMOTEV6_PREFIXES="2001:470:7945::/48"
 
 echo "Cleaning up old configuration..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	ip tunnel del tunv4-uplink$i
-	ip tunnel del tunv6-uplink$i
+	ip tunnel del tunv4-dnlink$i
+	ip tunnel del tunv6-dnlink$i
+	ip -4 route del ${TUN_REMOTE[$i]} via ${DNLINK_GATEWAY}
 done &>/dev/null
 (pkill -9 bird
 iptables -F
@@ -64,6 +72,14 @@ ip6tables -F
 ip6tables -X
 ipset destroy v4_local
 ipset destroy v6_local
+ip link set down dev ${UPLINK_INTERFACE}
+ip link set name uplink dev ${UPLINK_INTERFACE}
+ip addr flush dev uplink
+ip link set up dev uplink
+ip link set down dev ${DNLINK_INTERFACE}
+ip link set name dnlink dev ${DNLINK_INTERFACE}
+ip addr flush dev dnlink
+ip link set up dev dnlink
 ) &>/dev/null
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
@@ -73,6 +89,13 @@ echo "Enabling packet forwarding..."
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
+echo "Configuring uplink interface"
+ip -4 addr add ${UPLINK_ADDRESS}/${UPLINK_PREFIXLEN} dev uplink
+ip -4 route add default via ${UPLINK_GATEWAY} dev uplink
+
+echo "Configuring dnlink interface"
+ip -4 addr add ${DNLINK_ADDRESS}/${DNLINK_PREFIXLEN} dev dnlink
+ip -4 route add 192.16.185.188 via ${DNLINK_GATEWAY} dev dnlink
 
 echo "Defining the tunnel endpoint addresses..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
@@ -84,25 +107,26 @@ done
 
 echo "Creating the tunnel interfaces..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
-	ip link set tunv4-uplink$i up mtu 1472
-	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
-	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE[$i]} local ${TUN_LOCAL}
-	ip link set tunv6-uplink$i up mtu 1472
+	ip -4 route add ${TUN_REMOTE[$i]} via ${DNLINK_GATEWAY}
+	ip tunnel add tunv4-dnlink$i mode ipip remote ${TUN_REMOTE[$i]} local ${DNLINK_ADDRESS}
+	ip link set tunv4-dnlink$i up mtu 1472
+	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-dnlink$i
+	ip tunnel add tunv6-dnlink$i mode sit remote ${TUN_REMOTE[$i]} local ${DNLINK_ADDRESS}
+	ip link set tunv6-dnlink$i up mtu 1472
 
 	# This hack is necessary because Linux 6in4 ipv6 link-local is /128
-	ip -6 addr flush dev tunv6-uplink$i
-	ip -6 addr add fe80::$i:1/64 dev tunv6-uplink$i
+	ip -6 addr flush dev tunv6-dnlink$i
+	ip -6 addr add fe80::$i:1/64 dev tunv6-dnlink$i
 
-	ip -6 addr add ${TUNV6_LOCAL[$i]}/${TUNV6_PREFIXLEN} dev tunv6-uplink$i
+	ip -6 addr add ${TUNV6_LOCAL[$i]}/${TUNV6_PREFIXLEN} dev tunv6-dnlink$i
 done
 
 echo "Turning on MSS clamping for the tunnel interfaces..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	# MSS 1432: 1492 (dsl) - 20 (ipv4) - 20 (ipv4) - 20 (TCP)
-	iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv4-uplink$i -j TCPMSS --set-mss 1432
+	iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv4-dnlink$i -j TCPMSS --set-mss 1432
  	# MSS 1412: 1492 (dsl) - 20 (ipv4) - 40 (ipv6) - 20 (TCP)
-	ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv6-uplink$i -j TCPMSS --set-mss 1412
+	ip6tables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -o tunv6-dnlink$i -j TCPMSS --set-mss 1412
 done
 
 echo "Configuring ip sets..."
@@ -124,11 +148,11 @@ done
 
 echo "Configuring tunnel interface inbound firewall..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	iptables -A FORWARD -i tunv4-uplink$i -m set --match-set v4_local src -j ACCEPT
-	iptables -A FORWARD -i tunv4-uplink$i -j DROP
+	iptables -A FORWARD -i tunv4-dnlink$i -m set --match-set v4_local src -j ACCEPT
+	iptables -A FORWARD -i tunv4-dnlink$i -j DROP
 
-	ip6tables -A FORWARD -i tunv6-uplink$i -m set --match-set v6_local src -j ACCEPT
-	ip6tables -A FORWARD -i tunv6-uplink$i -j DROP
+	ip6tables -A FORWARD -i tunv6-dnlink$i -m set --match-set v6_local src -j ACCEPT
+	ip6tables -A FORWARD -i tunv6-dnlink$i -j DROP
 done
 
 echo "Configuring and starting OSPFv2 daemon..."
@@ -178,7 +202,7 @@ protocol ospf MyOSPF {
   area 0 {
 EOF
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	echo "    interface \"tunv4-uplink$i\" {"
+	echo "    interface \"tunv4-dnlink$i\" {"
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
 	echo "      neighbors {"
@@ -240,7 +264,7 @@ protocol ospf MyOSPF {
   area 0 {
 EOF
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	echo "    interface \"tunv6-uplink$i\" {"
+	echo "    interface \"tunv6-dnlink$i\" {"
 	echo "      ecmp weight ${WEIGHT[$i]};"
 	echo "      type nonbroadcast;"
 	echo "      neighbors {"
