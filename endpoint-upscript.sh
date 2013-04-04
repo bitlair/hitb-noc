@@ -39,6 +39,9 @@ DNLINK_ADDRESS="194.171.96.105"
 DNLINK_PREFIXLEN="27"
 DNLINK_GATEWAY="194.171.96.126"
 
+V6_UPLINK_REMOTE="216.66.84.46"
+V6_UPLINK_ADDRESS="2001:470:1f14:17d::2/64"
+
 LINK_COUNT=7
 
 TUN_REMOTE[0]="212.64.109.221"
@@ -96,6 +99,13 @@ ip -4 route add default via ${UPLINK_GATEWAY} dev uplink
 echo "Configuring dnlink interface"
 ip -4 addr add ${DNLINK_ADDRESS}/${DNLINK_PREFIXLEN} dev dnlink
 ip -4 route add 192.16.185.188 via ${DNLINK_GATEWAY} dev dnlink
+
+echo "Configuring HE uplink"
+ip tunnel add v6-uplink mode sit remote ${V6_UPLINK_REMOTE} local ${DNLINK_ADDRESS}
+ip link set v6-uplink up mtu 1472
+ip -6 addr add 2001:470:1f14:17d::2/64 dev v6-uplink
+ip -6 route add ::/0 dev v6-uplink
+
 
 echo "Defining the tunnel endpoint addresses..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
