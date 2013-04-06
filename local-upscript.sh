@@ -34,8 +34,8 @@ TUNV6_IPFORMAT="2001:470:7945:ff%02d::%d" # first %d is replaced by tunnel numbe
 TUNV6_PREFIXLEN=64
 
 
-REMOTEV4_PREFIXES="145.220.8.0/21"
-REMOTEV6_PREFIXES="2001:470:7945::/48"
+LOCALV4_PREFIXES="145.220.8.0/21"
+LOCALV6_PREFIXES="2001:470:7945::/48 2001:610:16f::/48"
 
 LINK_COUNT="7"
 BOND_INTERFACE="bond0"
@@ -194,7 +194,7 @@ router id 2;
 
 filter hitb_local_routes {
 EOF
-for prefix in ${REMOTEV4_PREFIXES};do
+for prefix in ${LOCALV4_PREFIXES};do
 	echo "  if net ~ ${prefix} then accept;"
 done >> /tmp/bird.conf
 cat >> /tmp/bird.conf << EOF
@@ -220,7 +220,7 @@ protocol device {
 protocol static {
   import all;
 EOF
-for prefix in ${REMOTEV4_PREFIXES};do
+for prefix in ${LOCALV4_PREFIXES};do
 	echo "route ${prefix} blackhole; # Not really, but we announce it!"
 done >> /tmp/bird.conf
 cat >> /tmp/bird.conf << EOF
@@ -260,7 +260,7 @@ router id 2;
 
 filter hitb_local_routes {
 EOF
-for prefix in ${REMOTEV6_PREFIXES};do
+for prefix in ${LOCALV6_PREFIXES};do
 	echo "  if net ~ ${prefix} then accept;"
 done >> /tmp/bird6.conf
 cat >> /tmp/bird6.conf << EOF
@@ -286,7 +286,7 @@ protocol device {
 protocol static {
   import all;
 EOF
-for prefix in ${REMOTEV6_PREFIXES};do
+for prefix in ${LOCALV6_PREFIXES};do
 	echo "route ${prefix} blackhole; # Not really, but we announce it!"
 done >> /tmp/bird6.conf
 cat >> /tmp/bird6.conf << EOF
