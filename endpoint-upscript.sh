@@ -49,6 +49,12 @@ TUNV6_UPLINK_REMOTE="216.66.84.46"
 TUNV6_UPLINK_ADDRESS="2001:470:1f14:17d::2/64"
 TUNV6_SUBNET="2001:470:7945::/48"
 
+TUNV4_BITLAIR_REMOTE="83.87.111.232"
+TUNV4_BITLAIR_ADDRESS="145.220.15.10"
+TUNV4_BITLAIR_PEER="145.220.15.11"
+TUNV4_BITLAIR_SUBNET="192.168.88.0/24"
+
+
 LINK_COUNT=7
 
 TUN_REMOTE[0]="212.64.109.221"
@@ -92,6 +98,8 @@ ip addr flush dev dnlink
 ip link set up dev dnlink
 ip tunnel del tunv6-uplink
 ip -6 rule del from ${UPLINKV6_SUBNET} table 101 
+ip tunnel del tunv4-bitlair
+ip -4 route del ${TUNV4_BITLAIR_REMOTE}
 ) &>/dev/null
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
@@ -101,24 +109,31 @@ echo "Enabling packet forwarding..."
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
-echo "Configuring uplink interface"
+echo "Configuring uplink interface..."
 ip -4 addr add ${UPLINKV4_ADDRESS}/${UPLINKV4_PREFIXLEN} dev uplink
 ip -4 route add default via ${UPLINKV4_GATEWAY} dev uplink
 ip -6 addr add ${UPLINKV6_ADDRESS}/${UPLINKV6_PREFIXLEN} dev uplink
 ip -6 route add default via ${UPLINKV6_GATEWAY} dev uplink table 101
 ip -6 rule add from ${UPLINKV6_SUBNET} table 101
 
-echo "Configuring dnlink interface"
+echo "Configuring dnlink interface..."
 ip -4 addr add ${DNLINKV4_ADDRESS}/${DNLINKV4_PREFIXLEN} dev dnlink
 ip -4 route add ${DNLINKV4_EXTRA_ROUTE_BACKDOOR} via ${DNLINKV4_GATEWAY} dev dnlink
 
 
-echo "Configuring HE uplink"
+echo "Configuring HE uplink..."
 ip -4 route add ${TUNV6_UPLINK_REMOTE} via ${DNLINKV4_GATEWAY} src ${DNLINKV4_ADDRESS}
 ip tunnel add tunv6-uplink mode sit remote ${TUNV6_UPLINK_REMOTE} local ${DNLINKV4_ADDRESS}
 ip link set tunv6-uplink up mtu 1472
 ip -6 addr add ${TUNV6_UPLINK_ADDRESS} dev tunv6-uplink
 ip -6 route add ::/0 dev tunv6-uplink
+
+echo "Configuring bitlair tunnel..."
+ip -4 route add ${TUNV4_BITLAIR_REMOTE} via ${DNLINKV4_GATEWAY}
+ip tunnel add tunv4-bitlair mode ipip remote ${TUNV4_BITLAIR_REMOTE} local ${DNLINKV4_ADDRESS}
+ip link set tunv4-bitlair up mtu 1472
+ip -4 addr add ${TUNV4_BITLAIR_ADDRESS} peer ${TUNV4_BITLAIR_PEER} dev tunv4-bitlair
+ip -4 route add ${TUNV4_BITLAIR_SUBNET} dev tunv4-bitlair
 
 
 echo "Defining the tunnel endpoint addresses..."
