@@ -27,7 +27,7 @@
 # Required-Stop:
 # Should-Start:
 # Default-Start:     1 2 3 4 5
-# Default-Stop
+# Default-Stop:
 # Short-Description: Create all the magic loadbalancer thingies
 # Description:       Moar magic stuff happenink here..
 ### END INIT INFO
