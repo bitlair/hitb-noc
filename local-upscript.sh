@@ -5,6 +5,7 @@
 #
 # Needs linux kernel 3.7 or later because of ECMP for IPv6
 # Needs iproute >= 20121211, because of nexthop for IPv6
+# Needs bird and bird6 >= 1.3.9, because of the dummy blackhole target
 #
 # Copyright (C) Wilco Baan Hofman
 #
@@ -21,7 +22,16 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
-
+### BEGIN INIT INFO
+# Provides:          local-upscript.sh
+# Required-Start:
+# Required-Stop:
+# Should-Start:
+# Default-Start:     1 2 3 4 5
+# Default-Stop:
+# Short-Description: Create all the magic loadbalancer thingies
+# Description:       Moar magic stuff happenink here..
+### END INIT INFO
 
 
 TUN_REMOTE="194.171.96.105"
