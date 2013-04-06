@@ -6,7 +6,7 @@
 # Needs linux kernel 3.7 or later because of ECMP for IPv6
 # Needs iproute >= 20121211, because of nexthop for IPv6
 #
-# Copyright (C) Wilco Baan Hofman
+# Copyright (C) 2013 by Wilco Baan Hofman 
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -30,17 +30,24 @@ TUNV6_IPFORMAT="2001:470:7945:ff%02d::%d" # first %d is replaced by tunnel numbe
 TUNV6_PREFIXLEN=64
 
 UPLINK_INTERFACE="eth1"
-UPLINK_ADDRESS="145.220.15.6"
-UPLINK_PREFIXLEN="30"
-UPLINK_GATEWAY="145.220.15.5"
+UPLINKV4_ADDRESS="145.220.15.6"
+UPLINKV4_PREFIXLEN="30"
+UPLINKV4_GATEWAY="145.220.15.5"
+UPLINKV4_SUBNET="145.220.8.0/21"
+UPLINKV6_ADDRESS="2001:610:16f:ffff::2"
+UPLINKV6_PREFIXLEN="64"
+UPLINKV6_GATEWAY="2001:610:16f:ffff::1"
+UPLINKV6_SUBNET="2001:610:16f::/48"
 
 DNLINK_INTERFACE="eth0"
-DNLINK_ADDRESS="194.171.96.105"
-DNLINK_PREFIXLEN="27"
-DNLINK_GATEWAY="194.171.96.126"
+DNLINKV4_ADDRESS="194.171.96.105"
+DNLINKV4_PREFIXLEN="27"
+DNLINKV4_GATEWAY="194.171.96.126"
+DNLINKV4_EXTRA_ROUTE_BACKDOOR="192.16.185.188"
 
-V6_UPLINK_REMOTE="216.66.84.46"
-V6_UPLINK_ADDRESS="2001:470:1f14:17d::2/64"
+TUNV6_UPLINK_REMOTE="216.66.84.46"
+TUNV6_UPLINK_ADDRESS="2001:470:1f14:17d::2/64"
+TUNV6_SUBNET="2001:470:7945::/48"
 
 LINK_COUNT=7
 
@@ -59,14 +66,14 @@ WEIGHT[4]="100"
 WEIGHT[5]="100"
 WEIGHT[6]="100"
 
-REMOTEV4_PREFIXES="145.220.8.0/21"
-REMOTEV6_PREFIXES="2001:470:7945::/48"
+REMOTEV4_PREFIXES="${UPLINKV4_SUBNET}"
+REMOTEV6_PREFIXES="${TUNV6_SUBNET} ${UPLINKV6_SUBNET}"
 
 echo "Cleaning up old configuration..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip tunnel del tunv4-dnlink$i
 	ip tunnel del tunv6-dnlink$i
-	ip -4 route del ${TUN_REMOTE[$i]} via ${DNLINK_GATEWAY}
+	ip -4 route del ${TUN_REMOTE[$i]} via ${DNLINKV4_GATEWAY}
 done &>/dev/null
 (pkill -9 bird
 iptables -F
@@ -83,6 +90,8 @@ ip link set down dev ${DNLINK_INTERFACE}
 ip link set name dnlink dev ${DNLINK_INTERFACE}
 ip addr flush dev dnlink
 ip link set up dev dnlink
+ip tunnel del tunv6-uplink
+ip -6 rule del from ${UPLINKV6_SUBNET} table 101 
 ) &>/dev/null
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
@@ -93,18 +102,23 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
 echo "Configuring uplink interface"
-ip -4 addr add ${UPLINK_ADDRESS}/${UPLINK_PREFIXLEN} dev uplink
-ip -4 route add default via ${UPLINK_GATEWAY} dev uplink
+ip -4 addr add ${UPLINKV4_ADDRESS}/${UPLINKV4_PREFIXLEN} dev uplink
+ip -4 route add default via ${UPLINKV4_GATEWAY} dev uplink
+ip -6 addr add ${UPLINKV6_ADDRESS}/${UPLINKV6_PREFIXLEN} dev uplink
+ip -6 route add default via ${UPLINKV6_GATEWAY} dev uplink table 101
+ip -6 rule add from ${UPLINKV6_SUBNET} table 101
 
 echo "Configuring dnlink interface"
-ip -4 addr add ${DNLINK_ADDRESS}/${DNLINK_PREFIXLEN} dev dnlink
-ip -4 route add 192.16.185.188 via ${DNLINK_GATEWAY} dev dnlink
+ip -4 addr add ${DNLINKV4_ADDRESS}/${DNLINKV4_PREFIXLEN} dev dnlink
+ip -4 route add ${DNLINKV4_EXTRA_ROUTE_BACKDOOR} via ${DNLINKV4_GATEWAY} dev dnlink
+
 
 echo "Configuring HE uplink"
-ip tunnel add v6-uplink mode sit remote ${V6_UPLINK_REMOTE} local ${DNLINK_ADDRESS}
-ip link set v6-uplink up mtu 1472
-ip -6 addr add 2001:470:1f14:17d::2/64 dev v6-uplink
-ip -6 route add ::/0 dev v6-uplink
+ip -4 route add ${TUNV6_UPLINK_REMOTE} via ${DNLINKV4_GATEWAY} src ${DNLINKV4_ADDRESS}
+ip tunnel add tunv6-uplink mode sit remote ${TUNV6_UPLINK_REMOTE} local ${DNLINKV4_ADDRESS}
+ip link set tunv6-uplink up mtu 1472
+ip -6 addr add ${TUNV6_UPLINK_ADDRESS} dev tunv6-uplink
+ip -6 route add ::/0 dev tunv6-uplink
 
 
 echo "Defining the tunnel endpoint addresses..."
@@ -117,11 +131,11 @@ done
 
 echo "Creating the tunnel interfaces..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	ip -4 route add ${TUN_REMOTE[$i]} via ${DNLINK_GATEWAY}
-	ip tunnel add tunv4-dnlink$i mode ipip remote ${TUN_REMOTE[$i]} local ${DNLINK_ADDRESS}
+	ip -4 route add ${TUN_REMOTE[$i]} via ${DNLINKV4_GATEWAY}
+	ip tunnel add tunv4-dnlink$i mode ipip remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS}
 	ip link set tunv4-dnlink$i up mtu 1472
 	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-dnlink$i
-	ip tunnel add tunv6-dnlink$i mode sit remote ${TUN_REMOTE[$i]} local ${DNLINK_ADDRESS}
+	ip tunnel add tunv6-dnlink$i mode sit remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS}
 	ip link set tunv6-dnlink$i up mtu 1472
 
 	# This hack is necessary because Linux 6in4 ipv6 link-local is /128
