@@ -46,7 +46,7 @@ TUNV6_PREFIXLEN=64
 DNLINK_VLAN="1000"
 DNLINKV4_ADDRESS="145.220.15.1"
 DNLINKV4_PREFIXLEN="30"
-DNLINKV4_LOCAL_GATEWAY="145.220.15.1"
+DNLINKV4_LOCAL_GATEWAY="145.220.15.2"
 DNLINKV6_ADDRESS="2001:470:7945:fff0::1"
 DNLINKV6_PREFIXLEN="64"
 DNLINKV6_LOCAL_GATEWAY="2001:470:7945:fff0::2"
@@ -112,7 +112,7 @@ for i in $(seq 0 $((${LINK_COUNT}-1))); do
 done &>/dev/null
 ip link set ${BOND_INTERFACE} down
 pkill -9 bird
-pkill -9 dhcpcd
+pkill -9 pump
 iptables -F
 iptables -X
 ip6tables -F
@@ -176,7 +176,7 @@ done
 
 echo "Spoofing the DHCP handshakes..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	dhcpcd -TRYN br-uplink$i &>/dev/null &
+	pump -i br-uplink$i --no-setup
 done
 
 echo "Defining the tunnel endpoint addresses..."
@@ -238,6 +238,8 @@ filter non_static {
 #debug protocols all;
 
 protocol kernel {
+  persist;
+  scan time 65535;
   import none;
   export filter non_static;
 }
@@ -304,6 +306,8 @@ filter non_static {
 #debug protocols all;
 
 protocol kernel {
+  persist;
+  scan time 65535;
   import none;
   export filter non_static;
 }
