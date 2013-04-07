@@ -21,6 +21,16 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
+### BEGIN INIT INFO
+# Provides:          endpoint-upscript.sh
+# Required-Start:
+# Required-Stop:
+# Should-Start:
+# Default-Start:     1 2 3 4 5
+# Default-Stop
+# Short-Description: Create all the magic loadbalancer thingies
+# Description:       Moar magic stuff happenink here..
+### END INIT INFO
 
 TUNV4_IPFORMAT="145.220.15.%d" # %d is replaced by TUNV4_IPBASE + (tunnel number * 2)
 TUNV4_IPBASE="240"
