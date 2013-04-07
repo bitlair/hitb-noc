@@ -74,15 +74,15 @@ TUN_REMOTE[3]="212.64.110.124"
 TUN_REMOTE[4]="212.64.110.150"
 TUN_REMOTE[5]="212.64.110.173"
 TUN_REMOTE[6]="212.64.110.183"
-WEIGHT[0]="100"
-WEIGHT[1]="100"
-WEIGHT[2]="100"
-WEIGHT[3]="100"
-WEIGHT[4]="100"
-WEIGHT[5]="100"
-WEIGHT[6]="100"
+WEIGHT[0]="168"
+WEIGHT[1]="74"
+WEIGHT[2]="140"
+WEIGHT[3]="76"
+WEIGHT[4]="149"
+WEIGHT[5]="176"
+WEIGHT[6]="1"
 
-REMOTEV4_PREFIXES="${UPLINKV4_SUBNET}"
+REMOTEV4_PREFIXES="${UPLINKV4_SUBNET} 10.13.37.0/24"
 REMOTEV6_PREFIXES="${TUNV6_SUBNET} ${UPLINKV6_SUBNET}"
 
 echo "Cleaning up old configuration..."
@@ -229,6 +229,8 @@ filter non_static {
 #debug protocols all;
 
 protocol kernel {
+  persist;
+  scan time 65535;
   import none;
   export filter non_static;
 }
@@ -291,6 +293,8 @@ filter non_static {
 #debug protocols all;
 
 protocol kernel {
+  persist;
+  scan time 65535;
   import none;
   export filter non_static;
 }
