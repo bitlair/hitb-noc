@@ -115,8 +115,12 @@ pkill -9 bird
 pkill -9 pump
 iptables -F
 iptables -X
+iptables -F -t mangle
+iptables -X -t mangle
 ip6tables -F
 ip6tables -X
+ip6tables -F -t mangle
+ip6tables -X -t mangle
 
 echo "Making sure ARP replies are very strict about source interface..."
 echo 1 > /proc/sys/net/ipv4/conf/all/arp_filter
@@ -192,10 +196,10 @@ echo "Creating the tunnel interfaces..."
 ip -4 route add ${TUN_REMOTE} via ${GATEWAY[1]} dev br-uplink1 table main
 
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE} local ${ADDRESS[$i]}
+	ip tunnel add tunv4-uplink$i mode ipip remote ${TUN_REMOTE} local ${ADDRESS[$i]} ttl 225
 	ip link set tunv4-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
 	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-uplink$i
-	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE} local ${ADDRESS[$i]}
+	ip tunnel add tunv6-uplink$i mode sit remote ${TUN_REMOTE} local ${ADDRESS[$i]} ttl 225
 	ip link set tunv6-uplink$i up mtu 1472 # 1492 (dsl) - 20 (ipv4)
 
 	# This hack is necessary because Linux 6in4 link-local is /128

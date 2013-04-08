@@ -94,8 +94,12 @@ done &>/dev/null
 (pkill -9 bird
 iptables -F
 iptables -X
+iptables -F -t mangle
+iptables -X -t mangle
 ip6tables -F
 ip6tables -X
+ip6tables -F -t mangle
+ip6tables -X -t mangle
 ipset destroy v4_local
 ipset destroy v6_local
 ip link set down dev ${UPLINK_INTERFACE}
@@ -133,14 +137,14 @@ ip -4 route add ${DNLINKV4_EXTRA_ROUTE_BACKDOOR} via ${DNLINKV4_GATEWAY} dev dnl
 
 echo "Configuring HE uplink..."
 ip -4 route add ${TUNV6_UPLINK_REMOTE} via ${DNLINKV4_GATEWAY} src ${DNLINKV4_ADDRESS}
-ip tunnel add tunv6-uplink mode sit remote ${TUNV6_UPLINK_REMOTE} local ${DNLINKV4_ADDRESS}
+ip tunnel add tunv6-uplink mode sit remote ${TUNV6_UPLINK_REMOTE} local ${DNLINKV4_ADDRESS} ttl 225
 ip link set tunv6-uplink up mtu 1472
 ip -6 addr add ${TUNV6_UPLINK_ADDRESS} dev tunv6-uplink
 ip -6 route add ::/0 dev tunv6-uplink
 
 echo "Configuring bitlair tunnel..."
 ip -4 route add ${TUNV4_BITLAIR_REMOTE} via ${DNLINKV4_GATEWAY}
-ip tunnel add tunv4-bitlair mode ipip remote ${TUNV4_BITLAIR_REMOTE} local ${DNLINKV4_ADDRESS}
+ip tunnel add tunv4-bitlair mode ipip remote ${TUNV4_BITLAIR_REMOTE} local ${DNLINKV4_ADDRESS} ttl 225
 ip link set tunv4-bitlair up mtu 1472
 ip -4 addr add ${TUNV4_BITLAIR_ADDRESS} peer ${TUNV4_BITLAIR_PEER} dev tunv4-bitlair
 ip -4 route add ${TUNV4_BITLAIR_SUBNET} dev tunv4-bitlair
@@ -157,10 +161,10 @@ done
 echo "Creating the tunnel interfaces..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
 	ip -4 route add ${TUN_REMOTE[$i]} via ${DNLINKV4_GATEWAY}
-	ip tunnel add tunv4-dnlink$i mode ipip remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS}
+	ip tunnel add tunv4-dnlink$i mode ipip remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS} ttl 225
 	ip link set tunv4-dnlink$i up mtu 1472
 	ip -4 addr add ${TUNV4_LOCAL[$i]} peer ${TUNV4_REMOTE[$i]} dev tunv4-dnlink$i
-	ip tunnel add tunv6-dnlink$i mode sit remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS}
+	ip tunnel add tunv6-dnlink$i mode sit remote ${TUN_REMOTE[$i]} local ${DNLINKV4_ADDRESS} ttl 225
 	ip link set tunv6-dnlink$i up mtu 1472
 
 	# This hack is necessary because Linux 6in4 ipv6 link-local is /128
