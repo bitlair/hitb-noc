@@ -180,7 +180,7 @@ done
 
 echo "Spoofing the DHCP handshakes..."
 for i in $(seq 0 $((${LINK_COUNT}-1))); do
-	pump -i br-uplink$i --no-setup
+	pump -i br-uplink$i --no-setup &
 done
 
 echo "Defining the tunnel endpoint addresses..."
